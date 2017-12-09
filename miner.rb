@@ -1,6 +1,8 @@
 #!/usr/bin/ruby
 
 require 'digest'
+require 'net/http'
+require 'json'
 
 #-----------------------------------
 #CONSTANTS
@@ -9,7 +11,7 @@ BLANK = ""
 ZERO = 0
 VERSION = "1"
 PIPE = "|"
-TARGET = "00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+NICKNAME = "spcruzaley"
 
 #-----------------------------------
 #Functional methods
@@ -27,7 +29,7 @@ end
 
 #Hash generation, this method will return the poosible hash to win the reward
 def generate_hash(prev_block_hash, merkle_hash, message, nonce)
-	return sha256_double(concat_str(PIPE,VERSION,prev_block_hash,merkle_hash,TARGET,message,nonce))
+	return sha256_double(concat_str(PIPE,VERSION,prev_block_hash,merkle_hash,get_last_target,message,nonce))
 end
 
 #Generate the merkle root
@@ -57,7 +59,111 @@ def concat_str(separator, *strings)
   else
     return concatenated_str
   end
+end
 
+def get_last_target
+  url = 'https://gameathon.mifiel.com/api/v1/games/testnet/target'
+  uri = URI(url)
+  response = Net::HTTP.get(uri)
+  obj = JSON.parse(response)
+
+  return obj['target']
+end
+
+def get_merkle_from_pool
+  url = 'https://gameathon.mifiel.com/api/v1/games/testnet/pool'
+  uri = URI(url)
+  response = Net::HTTP.get(uri)
+  obj = get_array_from_json(JSON.parse(response))
+  # obj = get_array_from_json_dummy()
+
+  i = 0
+  current_pos = 0
+  hashA = ''
+  hashB = ''
+  txlength = obj.length
+
+  while (txlength-1) > current_pos
+    if i < (txlength -1)
+      hashA = obj[i].to_s
+      i += 1
+      hashB = obj[i].to_s
+      i += 1
+
+      obj[current_pos] = sha256_double(hashA << hashB)
+      current_pos += 1
+    else
+			hashA = obj[i].to_s
+      hashB = obj[i].to_s
+      obj[current_pos] = sha256_double(hashA << hashB)
+      txlength = current_pos
+      current_pos = 0
+      i = 0
+    end
+
+  end
+
+  return sha256_double(obj[0] << obj[1])
+end
+
+def get_last_block
+	url = 'https://gameathon.mifiel.com/api/v1/games/testnet/blocks'
+  uri = URI(url)
+  response = Net::HTTP.get(uri)
+  obj = JSON.parse(response)
+
+	return obj[obj.length-1]
+end
+
+def get_array_from_json(json_object)
+  arr = json_object
+  i = 0
+
+  while i < json_object.length do
+    arr[i] = json_object[i]['hash']
+    i += 1
+  end
+
+  return arr
+end
+
+def send_data(prev_block_hash, nonce, merkle_hash, generated_hash)
+	uri = URI.parse("https://gameathon.mifiel.com/api/v1/games/testnet/block_found")
+
+	header = {'Content-Type': 'text/json'}
+	data_to_send = "{
+		\"prev_block_hash\":\"#{prev_block_hash}\",
+		\"height\":\"2\",
+		\"message\":\"#{NICKNAME}\",
+		\"nonce\":\"#{nonce}\",
+		\"nickname\":\"#{NICKNAME}\",
+		\"merkle_root\":\"#{merkle_hash}\",
+		\"transactions\": {
+				\"hash\":\"#{generated_hash}\",
+				\"inputs\":{
+						\"prev_hash\":\"#{prev_block_hash}\",
+						\"vout\":\"-1\",
+						\"script_sig\":\"123456789012345678901\"
+					}
+				},
+				\"outputs\":{
+						\"vaue\":\"5000000000\",
+						\"script\":\"03627eac6729a1f3f210dbfba4f9e21d6bfdce764e00b7559cc68a7551ddd839bf\"
+				}
+			}
+		}"
+
+		puts data_to_send
+
+	# Create the HTTP objects
+	http = Net::HTTP.new(uri.host, uri.port)
+	request = Net::HTTP::Post.new(uri.request_uri, header)
+	request.body = data_to_send.to_json
+
+	# Send the request
+	response = http.request(request)
+
+	return response
 end
 
 #---------------------------------------------------------------
@@ -105,5 +211,42 @@ end
 #---------------------------------------------------------------
 #Executing test cases
 #---------------------------------------------------------------
-test_hash_generation
-test_merkle_generation
+# test_hash_generation
+# test_merkle_generation
+
+#Calls to API
+# puts get_last_target
+# puts get_merkle_from_pool
+# puts get_last_block
+
+def initial_method
+	#Get the last data from the node
+	last_data = get_last_block
+
+	prev_block_hash = last_data['prev_block_hash']
+	merkle_hash = get_merkle_from_pool
+	message = "Yo merengues"
+	nonce = 0
+
+	while true do
+		#Generate the hash with the current info
+		hash_generated = generate_hash(prev_block_hash, merkle_hash, message, nonce.to_s)
+
+		hash_int = (hash_generated.hex.to_s(2).rjust(hash_generated.size*4, '0')).to_i(2)
+		target_int =  (get_last_target.hex.to_s(2).rjust(get_last_target.size*4, '0')).to_i(2)
+
+		puts "Nonce: #{nonce.to_s} - Hash: #{hash_generated}"
+		if(hash_int < target_int)
+			puts "Found !"
+			break;
+		end
+		nonce += 1
+	end
+
+
+	#Send the info
+	#resp = send_data(prev_block_hash, nonce, merkle_hash, hash_generated)
+	#puts resp
+end
+
+initial_method

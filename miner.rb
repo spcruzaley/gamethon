@@ -3,6 +3,7 @@
 require 'digest'
 require 'net/http'
 require 'json'
+require 'base64'
 
 #-----------------------------------
 #CONSTANTS
@@ -28,8 +29,8 @@ def sha256_double(message)
 end
 
 #Hash generation, this method will return the poosible hash to win the reward
-def generate_hash(prev_block_hash, merkle_hash, message, nonce)
-	return sha256_double(concat_str(PIPE,VERSION,prev_block_hash,merkle_hash,get_last_target,message,nonce))
+def generate_hash(prev_block_hash, merkle_hash, last_target, message, nonce)
+	return sha256_double(concat_str(PIPE,VERSION,prev_block_hash,merkle_hash,last_target,message,nonce))
 end
 
 #Generate the merkle root
@@ -44,6 +45,22 @@ end
 #-----------------------------------
 #Utilities
 #-----------------------------------
+
+def write_file(name, data)
+	File.open(name, 'w') {
+    |file| file.write(data)
+  }
+end
+
+def read_file(name)
+  counter = 0
+  File.open(name, "r") do |infile|
+      while (line = infile.gets)
+          puts line
+          counter = counter + 1
+      end
+  end
+end
 
 #Concat several string with the indicated separator
 def concat_str(separator, *strings)
@@ -166,87 +183,37 @@ def send_data(prev_block_hash, nonce, merkle_hash, generated_hash)
 	return response
 end
 
-#---------------------------------------------------------------
-# Manual test cases
-#---------------------------------------------------------------
 
-#Validate the correct process to generate the hash
-def test_hash_generation
-  puts "---------------------------------------------------------------"
-  puts "Testing hash generation..."
-  puts ""
-  hash_to_be = "00000a32767f5fc0a06e64b4688d0da8895d3e79d44e33076b667e5cd35ac912"
-  hash_gotted = generate_hash(
-    "0000000000000000000000000000000000000000000000000000000000000000",
-    "e2ff1b9ea442fd4dff79822fd9fb577a6cb5d17e4571fd1baeaf3710fb36b2e6",
-    "Yo mero",
-    "5028817")
-  if hash_to_be == hash_gotted
-    puts "SUCCESS !!"
-    puts "Hash to be: #{hash_to_be}"
-    puts "Hash gotten: #{hash_gotted}"
-  else
-    puts "FAILURE !!"
-  end
-end
+#Get the last data from the node
+last_data = get_last_block
+puts "last_data #{last_data}"
 
-#Validate the correcto process to generate the merkle hash
-def test_merkle_generation
-  puts "---------------------------------------------------------------"
-  puts "Testing merkle root generation..."
-  puts ""
-  hash_to_be = "f0ae517fa354e6845eb0d2ac98f3eacd4cafce04a240bede8f405642f9106c49"
-  hash_gotted = merkle_root(
-    "0000000000000000000000000000000000000000000000000000000000000000",
-    "e2ff1b9ea442fd4dff79822fd9fb577a6cb5d17e4571fd1baeaf3710fb36b2e6")
-  if hash_to_be == hash_gotted
-    puts "SUCCESS !!"
-    puts "Hash to be: #{hash_to_be}"
-    puts "Hash gotten: #{hash_gotted}"
-  else
-    puts "FAILURE !!"
-  end
-end
+#Get the last target
+ltarget = get_last_target
+puts "ltarget #{ltarget}"
 
-#---------------------------------------------------------------
-#Executing test cases
-#---------------------------------------------------------------
-# test_hash_generation
-# test_merkle_generation
+prev_block_hash = last_data['prev_block_hash']
+puts "prev_block_hash #{prev_block_hash}"
+merkle_hash = get_merkle_from_pool
+puts "merkle_hash #{merkle_hash}"
+message = "Yo merengues"
+nonce = 0
+prng = Random.new
+prng.rand(10000000)
 
-#Calls to API
-# puts get_last_target
-# puts get_merkle_from_pool
-# puts get_last_block
+while true do
+	nonce = prng.rand(10000000).to_i
+	#Generate the hash with the current info
+	hashe = generate_hash(prev_block_hash, merkle_hash, ltarget, message, nonce.to_s)
 
-def initial_method
-	#Get the last data from the node
-	last_data = get_last_block
+	hash_int = hashe.to_i(16)
+	target_int = hashe.to_i(16)
 
-	prev_block_hash = last_data['prev_block_hash']
-	merkle_hash = get_merkle_from_pool
-	message = "Yo merengues"
-	nonce = 0
-
-	while true do
-		#Generate the hash with the current info
-		hash_generated = generate_hash(prev_block_hash, merkle_hash, message, nonce.to_s)
-
-		hash_int = (hash_generated.hex.to_s(2).rjust(hash_generated.size*4, '0')).to_i(2)
-		target_int =  (get_last_target.hex.to_s(2).rjust(get_last_target.size*4, '0')).to_i(2)
-
-		puts "Nonce: #{nonce.to_s} - Hash: #{hash_generated}"
-		if(hash_int < target_int)
-			puts "Found !"
-			break;
-		end
-		nonce += 1
+	# puts "[hashInt #{hash_int}: targetInt #{target_int}]"
+	puts "Nonce: #{nonce.to_s} - Hash: #{hash_generated}"
+	if(hash_int < target_int)
+		puts "Found !"
+		break;
 	end
-
-
-	#Send the info
-	#resp = send_data(prev_block_hash, nonce, merkle_hash, hash_generated)
-	#puts resp
+	nonce += 1
 end
-
-initial_method

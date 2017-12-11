@@ -1,219 +1,158 @@
-#!/usr/bin/ruby
-
+require 'rubygems'
 require 'digest'
-require 'net/http'
 require 'json'
 require 'base64'
+require 'rest-client'
+require 'pry'
+require 'securerandom'
+require 'time'
+#Custom classes
+require './apirest'
+require './sha256'
+require './constants'
+require './utilities'
 
-#-----------------------------------
-#CONSTANTS
-#-----------------------------------
-BLANK = ""
-ZERO = 0
-VERSION = "1"
-PIPE = "|"
-NICKNAME = "spcruzaley"
+class Miner
 
-#-----------------------------------
-#Functional methods
-#-----------------------------------
+	$api_service = ApiRest.new('testnet3')
 
-#Generates a sha256 hash
-def sha256_simple(message)
-	return Digest::SHA256.hexdigest (message)
-end
-
-#Generates a double sha256 hash
-def sha256_double(message)
-	return Digest::SHA256.hexdigest (Digest::SHA256.digest (message))
-end
-
-#Hash generation, this method will return the poosible hash to win the reward
-def generate_hash(prev_block_hash, merkle_hash, last_target, message, nonce)
-	return sha256_double(concat_str(PIPE,VERSION,prev_block_hash,merkle_hash,last_target,message,nonce))
-end
-
-#Generate the merkle root
-def merkle_root(*hashes)
-  if hashes.length > 1
-    return sha256_simple(concat_str(BLANK,*hashes))
-  else
-    return hashes[0]
-  end
-end
-
-#-----------------------------------
-#Utilities
-#-----------------------------------
-
-def write_file(name, data)
-	File.open(name, 'w') {
-    |file| file.write(data)
-  }
-end
-
-def read_file(name)
-  counter = 0
-  File.open(name, "r") do |infile|
-      while (line = infile.gets)
-          puts line
-          counter = counter + 1
-      end
-  end
-end
-
-#Concat several string with the indicated separator
-def concat_str(separator, *strings)
-	concatenated_str = ""
-  sep_length = separator.length
-
-  strings.each do |word|
-    concatenated_str << word << separator
-  end
-
-  if sep_length > ZERO
-    return concatenated_str[0..((sep_length*-1)-1)]
-  else
-    return concatenated_str
-  end
-end
-
-def get_last_target
-  url = 'https://gameathon.mifiel.com/api/v1/games/testnet/target'
-  uri = URI(url)
-  response = Net::HTTP.get(uri)
-  obj = JSON.parse(response)
-
-  return obj['target']
-end
-
-def get_merkle_from_pool
-  url = 'https://gameathon.mifiel.com/api/v1/games/testnet/pool'
-  uri = URI(url)
-  response = Net::HTTP.get(uri)
-  obj = get_array_from_json(JSON.parse(response))
-  # obj = get_array_from_json_dummy()
-
-  i = 0
-  current_pos = 0
-  hashA = ''
-  hashB = ''
-  txlength = obj.length
-
-  while (txlength-1) > current_pos
-    if i < (txlength -1)
-      hashA = obj[i].to_s
-      i += 1
-      hashB = obj[i].to_s
-      i += 1
-
-      obj[current_pos] = sha256_double(hashA << hashB)
-      current_pos += 1
-    else
-			hashA = obj[i].to_s
-      hashB = obj[i].to_s
-      obj[current_pos] = sha256_double(hashA << hashB)
-      txlength = current_pos
-      current_pos = 0
-      i = 0
-    end
-
-  end
-
-  return sha256_double(obj[0] << obj[1])
-end
-
-def get_last_block
-	url = 'https://gameathon.mifiel.com/api/v1/games/testnet/blocks'
-  uri = URI(url)
-  response = Net::HTTP.get(uri)
-  obj = JSON.parse(response)
-
-	return obj[obj.length-1]
-end
-
-def get_array_from_json(json_object)
-  arr = json_object
-  i = 0
-
-  while i < json_object.length do
-    arr[i] = json_object[i]['hash']
-    i += 1
-  end
-
-  return arr
-end
-
-def send_data(prev_block_hash, nonce, merkle_hash, generated_hash)
-	uri = URI.parse("https://gameathon.mifiel.com/api/v1/games/testnet/block_found")
-
-	header = {'Content-Type': 'text/json'}
-	data_to_send = "{
-		\"prev_block_hash\":\"#{prev_block_hash}\",
-		\"height\":\"2\",
-		\"message\":\"#{NICKNAME}\",
-		\"nonce\":\"#{nonce}\",
-		\"nickname\":\"#{NICKNAME}\",
-		\"merkle_root\":\"#{merkle_hash}\",
-		\"transactions\": {
-				\"hash\":\"#{generated_hash}\",
-				\"inputs\":{
-						\"prev_hash\":\"#{prev_block_hash}\",
-						\"vout\":\"-1\",
-						\"script_sig\":\"123456789012345678901\"
-					}
-				},
-				\"outputs\":{
-						\"vaue\":\"5000000000\",
-						\"script\":\"03627eac6729a1f3f210dbfba4f9e21d6bfdce764e00b7559cc68a7551ddd839bf\"
-				}
-			}
-		}"
-
-		puts data_to_send
-
-	# Create the HTTP objects
-	http = Net::HTTP.new(uri.host, uri.port)
-	request = Net::HTTP::Post.new(uri.request_uri, header)
-	request.body = data_to_send.to_json
-
-	# Send the request
-	response = http.request(request)
-
-	return response
-end
-
-
-#Get the last data from the node
-last_data = get_last_block
-puts "last_data #{last_data}"
-
-#Get the last target
-ltarget = get_last_target
-puts "ltarget #{ltarget}"
-
-prev_block_hash = last_data['prev_block_hash']
-puts "prev_block_hash #{prev_block_hash}"
-merkle_hash = get_merkle_from_pool
-puts "merkle_hash #{merkle_hash}"
-message = "Yo merengues"
-nonce = 0
-prng = Random.new
-prng.rand(10000000)
-
-while true do
-	nonce = prng.rand(10000000).to_i
-	#Generate the hash with the current info
-	hashe = generate_hash(prev_block_hash, merkle_hash, ltarget, message, nonce.to_s)
-
-	hash_int = hashe.to_i(16)
-	target_int = hashe.to_i(16)
-
-	# puts "[hashInt #{hash_int}: targetInt #{target_int}]"
-	puts "Nonce: #{nonce.to_s} - Hash: #{hash_generated}"
-	if(hash_int < target_int)
-		puts "Found !"
-		break;
+	def get_info_blocks
+		return $api_service.get_blocks
 	end
-	nonce += 1
+
+	def get_last_block(block)
+		return block[block.length-1]
+	end
+
+	def get_current_target
+		return $api_service.get_last_target
+	end
+
+	def generate_merkle_root(data)
+		puts "Generating merkle root hash..."
+		obj = data.map{|k|k[:transactions].map{|v|v[:hash]}}
+
+	  i = 0
+	  current_pos = 0
+	  hashA = ''
+	  hashB = ''
+	  txlength = obj.length
+
+		if obj.length <= 1
+			return Sha256::sha256_double(obj[0])# << obj[0])
+		else
+			while (txlength-1) > current_pos
+				if i < (txlength -1)
+					hashA = obj[i].to_s
+					i += 1
+					hashB = obj[i].to_s
+					i += 1
+
+					obj[current_pos] = Sha256::sha256_double(hashA << hashB)
+					current_pos += 1
+				else
+					hashA = obj[i].to_s
+					hashB = obj[i].to_s
+					obj[current_pos] = Sha256::sha256_double(hashA << hashB)
+					txlength = current_pos
+					current_pos = 0
+					i = 0
+				end
+			end
+			return Sha256::sha256_double(obj[0] << obj[1])
+		end
+	end
+
+	def get_reward(data)
+		puts "Getting reward..."
+		reward = Constants::REWARD_NETWORK.to_i >> (data[:height] / Constants::HALVING_COUNT)
+
+		return reward
+	end
+
+	def get_fees(data)
+		puts "Generating fees..."
+		input_amounts = data.map{|k|k[:transactions].map{|v|v[:inputs].map{|w|w[:amount]}}}.map(&:last).reduce(:+).reduce(:+)
+		output_amounts = data.map{|k|k[:transactions].map{|v|v[:outputs].map{|w|w[:value]}}}.map(&:last).reduce(:+).reduce(:+)
+
+		fee = input_amounts - output_amounts
+
+		if fee < 0
+			puts "****************************************"
+			puts "WARNING: Fee amount less than zero"
+			puts "****************************************"
+		end
+		return fee
+	end
+
+	def generate_hash(data, target, merkle_root, nonce)
+		puts "Generating hash..."
+		return Sha256::sha256_double(
+			Utilities::concat_str(
+				Constants::PIPE,Constants::VERSION.to_s,data[:hash].to_s,merkle_root,target.to_s,Constants::MESSAGE,nonce.to_s))
+	end
+
+	def generate_hash_transaction(data_last_block, reward)
+		puts "Generating hash transaction..."
+	  coinbase = {
+	    inputs: [
+	      {
+	        prev_hash: [data_last_block[:hash]].pack('H*'),
+	        script_sig: [SecureRandom.hex].pack('H*'),
+	        vout: [Utilities::int_to_binary(Constants::MINUS_ONE)].pack('H*')
+	      }
+	    ],
+	    outputs: [
+	      {
+	        value: [Utilities::int_to_binary(reward)].pack('H*'),
+	        script_length: [Utilities::int_to_binary(Constants::SCRIPT.length.to_i)].pack('H*'),
+	        script: [Constants::SCRIPT].pack('H*')
+	      }
+	    ]
+	  }
+
+	  transaction = {
+	    version: [Utilities::int_to_binary(Constants::VERSION)].pack('H*'),
+	    inputs_length: [Utilities::int_to_binary(coinbase[:inputs].length.to_i)].pack('H*'),
+	    inputs_map_join: coinbase[:inputs].map{|k| k.values}.join,
+	    outputs_length: [Utilities::int_to_binary(coinbase[:outputs].length.to_i)].pack('H*'),
+	    outputs_map_join: coinbase[:outputs].map{|k| k.values}.join,
+	    lock_time: [Utilities::int_to_binary(Constants::LOCK_TIME)].pack('H*')
+	  }
+
+		transac = Sha256::sha256_double(transaction.values.join).reverse
+		puts "---------------------------------------------------------------------"
+		puts "Transaction generated: #{transac}"
+		puts "---------------------------------------------------------------------"
+	  return transac
+	end
+
+	def send_block_found(prev_block_hash, generated_hash, merkle_root, target, hash_trnx, nonce, reward)
+
+		data_to_send = {
+			prev_block_hash: prev_block_hash[:hash],
+			hash: generated_hash,
+			height: prev_block_hash[:height].to_i + 1,
+			message: Constants::MESSAGE,
+			nonce: nonce,
+			nickname: Constants::NICKNAME,
+			merkle_root: merkle_root,
+			used_target: target,
+			transactions: [{
+				hash: hash_trnx,
+				inputs: [{
+					prev_hash: Constants::TRNX_ZERO,
+					vout: Constants::MINUS_ONE_INT,
+					script_sig: SecureRandom.hex
+				}],
+				outputs: [{
+					value: reward,
+					script: Constants::SCRIPT
+				}]
+			}]
+		}
+
+		$api_service.query_post(data_to_send, 'block_found')
+	end
+
 end

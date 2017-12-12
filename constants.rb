@@ -2,7 +2,7 @@ class Constants
 
   BLANK = ""
   ZERO = 0
-  VERSION = "1"
+  VERSION = 1
   MINUS_ONE = "-1"
   MINUS_ONE_INT = -1
   PIPE = "|"

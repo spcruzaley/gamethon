@@ -9,7 +9,6 @@ class ApiRest
   $url
 
   def initialize(testnet)
-    # Instance variables
     $url = "https://gameathon.mifiel.com/api/v1/games/#{testnet}/"
   end
 
@@ -50,9 +49,6 @@ class ApiRest
    	 puts "************************************************"
   end
 
-  #-----------------------------------
-  #Functional methods for API
-  #-----------------------------------
   def get_blocks
   	puts "Getting last blocks..."
   	response = query_get('blocks')
@@ -67,7 +63,7 @@ class ApiRest
     return response[:target]
   end
 
-  def get_pool
+  def get_pool_info
   	puts "Getting pool..."
     response = query_get('pool')
 

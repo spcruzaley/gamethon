@@ -5,7 +5,7 @@ require './miner'
 #Object to miner
 $miner = Miner.new
 
-#Get all the current b.locks
+#Get all the current blocks
 current_blocks = $miner.get_info_blocks
 
 #Get last block info
@@ -14,8 +14,11 @@ last_block_info = $miner.get_last_block(current_blocks)
 #Get the current target
 target = $miner.get_current_target
 
+#Getting pool data
+data_pool = $miner.get_pool_info
+
 #Generate the merkle root from pool
-merkle_root = $miner.generate_merkle_root(current_blocks)
+merkle_root = $miner.generate_merkle_root(data_pool)
 
 #Get the reward (tomar el height de la info del ultimo bloque)
 reward = $miner.get_reward(last_block_info)

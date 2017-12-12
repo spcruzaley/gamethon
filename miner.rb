@@ -28,9 +28,13 @@ class Miner
 		return $api_service.get_last_target
 	end
 
+	def get_pool_info
+		return $api_service.get_pool_info
+	end
+
 	def generate_merkle_root(data)
 		puts "Generating merkle root hash..."
-		obj = data.map{|k|k[:transactions].map{|v|v[:hash]}}
+		obj = data.map{|v|v[:hash]}
 
 	  i = 0
 	  current_pos = 0
@@ -151,6 +155,8 @@ class Miner
 				}]
 			}]
 		}
+
+		puts data_to_send.to_json
 
 		$api_service.query_post(data_to_send, 'block_found')
 	end

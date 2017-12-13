@@ -14,7 +14,9 @@ require './utilities'
 
 class Miner
 
-	$api_service = ApiRest.new('testnet3')
+	def initialize(testnet)
+		$api_service = ApiRest.new(testnet)
+	end
 
 	def get_info_blocks
 		return $api_service.get_blocks
@@ -90,47 +92,45 @@ class Miner
 	end
 
 	def generate_hash(data, target, merkle_root, nonce)
-		puts "Generating hash..."
 		return Sha256::sha256_double(
 			Utilities::concat_str(
 				Constants::PIPE,Constants::VERSION.to_s,data[:hash].to_s,merkle_root,target.to_s,Constants::MESSAGE,nonce.to_s))
 	end
 
-	def generate_hash_transaction(data_last_block, reward)
+	def generate_hash_transaction(reward)
 		puts "Generating hash transaction..."
-	  coinbase = {
-	    inputs: [
-	      {
-	        prev_hash: [data_last_block[:hash]].pack('H*'),
-	        script_sig: [SecureRandom.hex].pack('H*'),
-	        vout: [Utilities::int_to_binary(Constants::MINUS_ONE)].pack('H*')
-	      }
-	    ],
-	    outputs: [
-	      {
-	        value: [Utilities::int_to_binary(reward)].pack('H*'),
-	        script_length: [Utilities::int_to_binary(Constants::SCRIPT.length.to_i)].pack('H*'),
-	        script: [Constants::SCRIPT].pack('H*')
-	      }
-	    ]
-	  }
 
-	  transaction = {
-	    version: [Utilities::int_to_binary(Constants::VERSION)].pack('H*'),
-	    inputs_length: [Utilities::int_to_binary(coinbase[:inputs].length.to_i)].pack('H*'),
-	    inputs_map_join: coinbase[:inputs].map{|k| k.values}.join,
-	    outputs_length: [Utilities::int_to_binary(coinbase[:outputs].length.to_i)].pack('H*'),
-	    outputs_map_join: coinbase[:outputs].map{|k| k.values}.join,
-	    lock_time: [Utilities::int_to_binary(Constants::LOCK_TIME)].pack('H*')
-	  }
+		coinbase = [
+			inputs: [
+					[Constants::TRNX_ZERO].pack('H*'),
+					[Constants::SCRIPT_SIG].pack('H*'),
+		      Constants::MINUS_ONE #vout
+			],
+			outputs: [
+					reward,
+					[Constants::SCRIPT].pack('H*').length,
+				  [Constants::SCRIPT].pack('H*')
+			]
+		]
 
-		transac = Sha256::sha256_double(transaction.values.join).reverse
+		transaction = [
+			Constants::VERSION,
+		  Constants::ONE, #Inputs length
+		  coinbase[0][:inputs].join,
+			Constants::ONE, #Outputs length
+		  coinbase[0][:outputs].join,
+  		Constants::LOCK_TIME
+		].join
+
+		transac = Sha256::sha256_double(transaction).reverse
 		puts "---------------------------------------------------------------------"
 		puts "Transaction generated: #{transac}"
 		puts "---------------------------------------------------------------------"
 	  return transac
 	end
 
+	#NOTE: I send the merkle root has the same that the hash transaction, because the merkle merkle_root
+	#is generated with all the transaction hashes
 	def send_block_found(prev_block_hash, generated_hash, merkle_root, target, hash_trnx, nonce, reward)
 
 		data_to_send = {
@@ -140,14 +140,14 @@ class Miner
 			message: Constants::MESSAGE,
 			nonce: nonce,
 			nickname: Constants::NICKNAME,
-			merkle_root: merkle_root,
+			merkle_root: hash_trnx,
 			used_target: target,
 			transactions: [{
 				hash: hash_trnx,
 				inputs: [{
 					prev_hash: Constants::TRNX_ZERO,
-					vout: Constants::MINUS_ONE_INT,
-					script_sig: SecureRandom.hex
+					vout: Constants::MINUS_ONE,
+					script_sig: Constants::SCRIPT_SIG
 				}],
 				outputs: [{
 					value: reward,
@@ -155,8 +155,6 @@ class Miner
 				}]
 			}]
 		}
-
-		puts data_to_send.to_json
 
 		$api_service.query_post(data_to_send, 'block_found')
 	end

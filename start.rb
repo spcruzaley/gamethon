@@ -1,9 +1,16 @@
 #!/usr/bin/ruby
 
+require 'time'
 require './miner'
 
+testnet = ARGV[0]
+
+if testnet.nil?
+  testnet = "testnet3"
+end
+
 #Object to miner
-$miner = Miner.new
+$miner = Miner.new(testnet)
 
 #Get all the current blocks
 current_blocks = $miner.get_info_blocks
@@ -25,20 +32,38 @@ reward = $miner.get_reward(last_block_info)
 fee = $miner.get_fees(current_blocks)
 reward_and_fee = reward + fee
 
-nonce = Random.new.rand(100000)
-#Generar mew hash
-#Return hash with hash, nonce & time
-hash_generated = $miner.generate_hash(last_block_info, target, merkle_root, nonce)
-
 #Generate hash transaction
-hash_trnx = $miner.generate_hash_transaction(last_block_info, reward_and_fee)
-# hash previo
-# hash generado
-# height (last_info.height + 1)
-# nonce
-# merkle
-# target
-# hash de la transaccion
+script_sig = Constants::SCRIPT_SIG
+hash_trnx = $miner.generate_hash_transaction(reward)
 
-#Send info to block_found
-response = $miner.send_block_found(last_block_info, hash_generated, merkle_root, target, hash_trnx, nonce, reward)
+puts "Start to mining..."
+start = Time.now
+nonce = 1
+while true do
+  if(nonce % 100000 == 0)
+    puts "Current nonce [#{nonce}]"
+  end
+
+  #Generar mew hash
+  hash_generated = $miner.generate_hash(last_block_info, target, merkle_root, nonce)
+
+  #Validate the hash
+  if(hash_generated.to_i(16) < target.to_i(16))
+    puts
+    puts "---------------------------------------------------------------------"
+    puts "Block found !!!"
+    puts "---------------------------------------------------------------------"
+    puts
+    puts "Finished after "+((Time.now) - start).to_s+" Seconds"
+    puts "PoW Hash: "+hash_generated
+    puts "Nonce used: "+nonce.to_s
+    puts
+    puts "Sending data..."
+    puts
+
+    #Send info to block_found
+    response = $miner.send_block_found(last_block_info, hash_generated, merkle_root, target, hash_trnx, nonce, reward)
+    break
+  end
+  nonce += 1
+end

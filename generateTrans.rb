@@ -7,85 +7,47 @@ require './sha256'
 require './constants'
 require './utilities'
 
-def bin_to_hex(s)
-  s.unpack('H*').first
-end
-
-def getHexFromString(string)
-	return ([string].map { |b| sprintf(", 0x%02x",b) }.join).dup.force_encoding('BINARY')
-end
-
-def value_to_binary_string(val)
-  val = val.to_i
-
-  if val < -0xffffffffffffffff # unrepresentable
-      ""
-  elsif val < 0    # 64-bit negative integer
-      top_32 = ((-val) & 0xffffffff00000000) >> 32
-      btm_32 = (-val) & 0x00000000ffffffff
-      [0xff, top_32, btm_32].pack("CVV")
-  elsif val <= 0xfc # 8-bit (almost) positive integer
-      [val].pack("C")
-  elsif val <= 0xffff # 16-bit positive integer
-      [0xfd, val].pack("Cv")
-  elsif val <= 0xffffffff # 32-bit positive integer
-      [0xfe, val].pack("CV")
-  else    # We can't represent this, whatever it is
-      ""
-  end
-end
+# prev_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+# vout = -1
+# script_sig = "47656e61726f3334333139"
+# value = 5035000448
+# script = "1f4e24ae96324bb8c765fffb34708247036cff86"
+# hash_to_be = eb103aecd49c3c943614eecfa0ad53db265b38dac33892ef4a502e7d944eb43e
 
 prev_hash = "0000000000000000000000000000000000000000000000000000000000000000"
 vout = -1
-script_sig = "5468652076657279206669727374207472616e73616374696f6e206d6f746865726675636b657273"
-value = 5000000000
-script = "ad15b1ddeac10e52020d82e667b96ec1709c3489"
+script_sig = "d9e53e0754b6ba2d600b56ab647bc030"
+value = 156250000
+script = "9816312418cd1fce9f1638943f66785b7af171f0"
+hash_to_be = ""
 
 puts "------------------------------------------------------------------------"
-puts "Hash to be:  591141d2b8795153cb75fef58ae6a4271563ad76a99d32127d0983f38f64b8c4"
+puts "Hash to be:  #{hash_to_be}"
 
-coinbase = {
+coinbase = [
 	inputs: [
-		{
-			prev_hash: [prev_hash.to_s].pack('H*'),
-			script_sig: [script_sig].pack('H*'),
-			#vout: " 2d 31".force_encoding('BINARY')
-			#vout: [getHexFromString(Constants::MINUS_ONE)].pack('H*')
-			vout: [Utilities::int_to_binary(Constants::MINUS_ONE)].pack('H*')
-		}
+			[prev_hash].pack('H*'),
+			[script_sig].pack('H*'),
+      vout
 	],
 	outputs: [
-		{
-			script: [script].pack('H*'),
-			#value: [getHexFromString(value.to_s)].pack('H*'),
-			value: [Utilities::int_to_binary(value)].pack('H*'),
-			#value: " 35 30 30 30 30 30 30 30 30 30".force_encoding('BINARY'),
-		}
+      value,
+      [script].pack('H*').length,
+		  [script].pack('H*')
 	]
-}
+]
 
-transaction = {
-	version: [Utilities::int_to_binary(Constants::VERSION)].pack('H*'),
-	#version: [getHexFromString(Constants::VERSION.to_s)].pack('H*'),
-	#version: " 31".force_encoding('BINARY'),
+transaction = [
+  Constants::VERSION,
+  Constants::ONE, #Inputs length
+  coinbase[0][:inputs].join,
+  Constants::ONE, #Outputs length
+  coinbase[0][:outputs].join,
+  Constants::LOCK_TIME
+].join
 
-	inputs_length: [Utilities::int_to_binary(coinbase[:inputs].length.to_i)].pack('H*'),
-	#inputs_length: [getHexFromString(coinbase[:inputs].length.to_s)].pack('H*'),
-	#inputs_length: " 31".force_encoding('BINARY'),
-	inputs_map_join: coinbase[:inputs].map{|k| k.values}.join,
-
-	#outputs_length: [getHexFromString(coinbase[:outputs].length.to_s)].pack('H*'),
-	outputs_length: [Utilities::int_to_binary(coinbase[:outputs].length.to_i)].pack('H*'),
-	#outputs_length: " 31".force_encoding('BINARY'),
-	outputs_map_join: coinbase[:outputs].map{|k| k.values}.join.split.join,
-
-	lock_time: [Utilities::int_to_binary(Constants::LOCK_TIME)].pack('H*')
-	#lock_time: [getHexFromString(Constants::LOCK_TIME.to_s)].pack('H*')
-	#lock_time: " 30".force_encoding('BINARY')
-}
-binding.pry
-transac = Sha256::sha256_double(bin_to_hex(transaction.values.join))
-puts "Hash gotten: #{transac.reverse}"
+transac = Sha256::sha256_double(transaction).reverse
+puts "Hash gotten: #{transac}"
 puts "---------------------------------------------------------------------"
 
 

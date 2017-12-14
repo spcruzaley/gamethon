@@ -34,39 +34,32 @@ class Miner
 		return $api_service.get_pool_info
 	end
 
-	def generate_merkle_root(data)
-		puts "Generating merkle root hash..."
-		obj = data.map{|v|v[:hash]}
+	def merge_hash(hashA, hashB)
+	  #binding.pry
+	  tempo = hashA.concat(hashB)
+	  hash = Digest::SHA256.hexdigest (Digest::SHA256.digest (tempo))
+	  return hash
+	end
 
+	def generate_merkle_root(obj)
+	  if(obj.length == 1)
+	    return obj[0]
+	  end
+
+	  if(obj.length % 2 != 0)
+	    obj.push(obj[-1])
+	  end
+
+	  new_arr = Array.new
 	  i = 0
-	  current_pos = 0
-	  hashA = ''
-	  hashB = ''
-	  txlength = obj.length
+	  while i < obj.length do
+	    hashA = obj[i]
+	    hashB = obj[i+1]
+	    i += 2
+	    new_arr.push(merge_hash(hashA, hashB))
+	  end
 
-		if obj.length <= 1
-			return Sha256::sha256_double(obj[0])# << obj[0])
-		else
-			while (txlength-1) > current_pos
-				if i < (txlength -1)
-					hashA = obj[i].to_s
-					i += 1
-					hashB = obj[i].to_s
-					i += 1
-
-					obj[current_pos] = Sha256::sha256_double(hashA << hashB)
-					current_pos += 1
-				else
-					hashA = obj[i].to_s
-					hashB = obj[i].to_s
-					obj[current_pos] = Sha256::sha256_double(hashA << hashB)
-					txlength = current_pos
-					current_pos = 0
-					i = 0
-				end
-			end
-			return Sha256::sha256_double(obj[0] << obj[1])
-		end
+	  return generate_merkle_root(new_arr)
 	end
 
 	def get_reward(data)
@@ -97,13 +90,13 @@ class Miner
 				Constants::PIPE,Constants::VERSION.to_s,data[:hash].to_s,merkle_root,target.to_s,Constants::MESSAGE,nonce.to_s))
 	end
 
-	def generate_hash_transaction(reward)
+	def generate_hash_transaction(reward, script_sig)
 		puts "Generating hash transaction..."
 
 		coinbase = [
 			inputs: [
 					[Constants::TRNX_ZERO].pack('H*'),
-					[Constants::SCRIPT_SIG].pack('H*'),
+					[script_sig].pack('H*'),
 		      Constants::MINUS_ONE #vout
 			],
 			outputs: [
@@ -129,9 +122,7 @@ class Miner
 	  return transac
 	end
 
-	#NOTE: I send the merkle root has the same that the hash transaction, because the merkle merkle_root
-	#is generated with all the transaction hashes
-	def send_block_found(prev_block_hash, generated_hash, merkle_root, target, hash_trnx, nonce, reward)
+	def send_block_found(prev_block_hash, generated_hash, merkle_root, target, hash_trnx, nonce, reward, script_sig)
 
 		data_to_send = {
 			prev_block_hash: prev_block_hash[:hash],
@@ -140,14 +131,14 @@ class Miner
 			message: Constants::MESSAGE,
 			nonce: nonce,
 			nickname: Constants::NICKNAME,
-			merkle_root: hash_trnx,
+			merkle_root: merkle_root,
 			used_target: target,
 			transactions: [{
 				hash: hash_trnx,
 				inputs: [{
 					prev_hash: Constants::TRNX_ZERO,
-					vout: Constants::MINUS_ONE,
-					script_sig: Constants::SCRIPT_SIG
+					vout: -1,
+					script_sig: script_sig
 				}],
 				outputs: [{
 					value: reward,
@@ -156,7 +147,14 @@ class Miner
 			}]
 		}
 
-		$api_service.query_post(data_to_send, 'block_found')
+		ret = $api_service.query_post(data_to_send, 'block_found')
+
+		new_block = {
+			transaction: data_to_send,
+			ret: ret
+		}
+
+		return new_block
 	end
 
 end
